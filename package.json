@@ -1,0 +1,25 @@
+{
+  "name": "@flomorphic/clickhouse-plugin",
+  "version": "0.1.0",
+  "description": "ClickHouse node for the Inflowenger workflow canvas — run queries, execute writes/DDL, insert records and create tables over a connection the platform ships with every call. Holds no database credentials. Built on @inflowenger/node-plugin-sdk.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@clickhouse/client": "^1.23.1",
+    "@inflowenger/node-plugin-sdk": "file:../../node-plugin-sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.0"
+  }
+}
