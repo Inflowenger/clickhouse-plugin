@@ -10,9 +10,10 @@
 import { formkit } from "@inflowenger/node-plugin-sdk";
 
 // The engines a person reaches for most often, offered as suggestions on the
-// engine fields. They stay plain text inputs, so any engine ClickHouse supports
-// — including a custom or parameterised one (e.g. ReplicatedMergeTree('/path',
-// '{replica}')) — can still be typed in full.
+// engine fields via the JSON Forms `suggestion` renderer option — a free-solo
+// autocomplete, so any engine ClickHouse supports (including a custom or
+// parameterised one, e.g. ReplicatedMergeTree('/path','{replica}')) can still
+// be typed in full.
 const tableEngines = [
   "MergeTree",
   "ReplacingMergeTree",
@@ -147,7 +148,7 @@ export const createDatabaseForm = formkit
       .describe("Identifier of the database to create, e.g. analytics. Accepts a {{$.path}} token."),
     formkit
       .text("engine", "Engine (optional)")
-      .set("examples", databaseEngines)
+      .option("suggestion", databaseEngines)
       .describe(
         "Database engine. Pick a suggestion or type any engine ClickHouse supports; e.g. Atomic (the default), Memory, Lazy, Replicated. Leave empty for the server default.",
       ),
@@ -179,7 +180,7 @@ export const createTableForm = formkit
     formkit
       .text("engine", "Engine")
       .default("MergeTree")
-      .set("examples", tableEngines)
+      .option("suggestion", tableEngines)
       .describe(
         "Table engine, used only with bare column definitions (a full statement carries its own). Pick a suggestion or type any engine — including a parameterised one, e.g. ReplacingMergeTree(version). Common: MergeTree, ReplacingMergeTree, Log, Memory.",
       ),
