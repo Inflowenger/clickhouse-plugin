@@ -17,6 +17,7 @@ import {
 import type { Client } from "../clickhouse/client.js";
 import { Pool } from "../clickhouse/settings.js";
 import {
+  createDatabaseForm,
   createTableForm,
   executeForm,
   insertForm,
@@ -51,7 +52,13 @@ export class Registry {
 
   /** Every action this plugin exposes, in the order the canvas shows them. */
   all(): Action[] {
-    return [this.query(), this.execute(), this.insert(), this.createTable()];
+    return [
+      this.query(),
+      this.execute(),
+      this.insert(),
+      this.createDatabase(),
+      this.createTable(),
+    ];
   }
 
   /** The settings meta RPCs: test a connection, and list tables / load columns. */
@@ -164,6 +171,28 @@ export class Registry {
     };
   }
 
+  private createDatabase(): Action {
+    return {
+      method: "clickhouse.database.create",
+      title: "Create Database (if not exists)",
+      description:
+        "Create a database only if it does not already exist; an existing one is left untouched. Optionally set the engine and a comment.",
+      icon: { icon: "mdi-database-plus" },
+      form: createDatabaseForm,
+      requestHandler: this.run("create database", async (job, client, input) => {
+        const database = str(input.database);
+        if (database === "") throw new Error("missing required input: database");
+
+        const ddl = buildCreateDatabaseDDL(database, str(input.engine), str(input.comment));
+
+        await job.progress(50, { title: "create database", content: preview(ddl) });
+
+        const queryId = await client.command(ddl);
+        return { ok: true, database, ddl, queryId };
+      }),
+    };
+  }
+
   private createTable(): Action {
     return {
       method: "clickhouse.table.create",
@@ -186,9 +215,29 @@ export class Registry {
 
         await job.progress(50, { title: "create table", content: preview(ddl) });
 
-        const queryId = await client.command(ddl);
+        let queryId: string;
+        let createdDatabase = "";
+        try {
+          queryId = await client.command(ddl);
+        } catch (e) {
+          // If the target database does not exist, create it and retry once.
+          // The name comes from the action's database field, the db. qualifier
+          // in a full statement, or the connection's default — whichever is set.
+          const database = str(input.database) || dbFromDDL(ddl) || client.database;
+          if (!isUnknownDatabase(e) || database === "") throw e;
+
+          await job.progress(70, { title: "create database", content: database });
+          await client.command(buildCreateDatabaseDDL(database, "", ""));
+          queryId = await client.command(ddl);
+          createdDatabase = database;
+        }
+
         const out: Output = { ok: true, ddl, queryId };
-        const table = str(input.table);
+        if (createdDatabase !== "") out.createdDatabase = createdDatabase;
+        // Report the table actually named in the DDL, not the stale form field:
+        // when a whole CREATE TABLE statement is given, the `table` input is
+        // ignored, so echoing it would mislabel the created table.
+        const table = tableFromDDL(ddl) || str(input.table);
         if (table !== "") out.table = table;
         return out;
       }),
@@ -429,6 +478,46 @@ function buildCreateDDL(
     ddl += ` ORDER BY ${orderBy}`;
   }
   return ddl;
+}
+
+// createTableHeadRe parses the head of a CREATE TABLE statement — the optional
+// IF NOT EXISTS clause and backtick quoting are stripped. Group 1 is the db.
+// qualifier when present, group 2 the table name.
+const createTableHeadRe =
+  /^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:`?([^`.\s(]+)`?\.)?`?([^`.\s(]+)`?/i;
+
+// tableFromDDL reports the table actually named in a CREATE TABLE statement, so
+// the output is not mislabelled by a stale form field. "" when it does not parse.
+function tableFromDDL(ddl: string): string {
+  return ddl.match(createTableHeadRe)?.[2] ?? "";
+}
+
+// dbFromDDL reports the database qualifier written into a CREATE TABLE statement
+// (the "db" in `CREATE TABLE db.t`), or "" when the name is unqualified.
+function dbFromDDL(ddl: string): string {
+  return ddl.match(createTableHeadRe)?.[1] ?? "";
+}
+
+// buildCreateDatabaseDDL renders CREATE DATABASE IF NOT EXISTS with an optional
+// engine and comment. The name is identifier-quoted; the comment is bound as a
+// literal (single quotes doubled), never spliced raw.
+function buildCreateDatabaseDDL(database: string, engine: string, comment: string): string {
+  let ddl = `CREATE DATABASE IF NOT EXISTS ${quoteIdent(database)}`;
+  if (engine !== "") ddl += ` ENGINE = ${engine}`;
+  if (comment !== "") ddl += ` COMMENT '${comment.replace(/'/g, "''")}'`;
+  return ddl;
+}
+
+// isUnknownDatabase tells whether a failed command failed because its target
+// database does not exist — ClickHouse error code 81 / type UNKNOWN_DATABASE —
+// so the create-table action can create it and retry. The message is matched
+// too, in case the error was not parsed into the structured shape.
+function isUnknownDatabase(e: unknown): boolean {
+  if (e && typeof e === "object") {
+    const { code, type } = e as { code?: unknown; type?: unknown };
+    if (type === "UNKNOWN_DATABASE" || code === "81") return true;
+  }
+  return /UNKNOWN_DATABASE|Database\b.*(?:does ?n['’]?t|does not) exist/i.test(errText(e));
 }
 
 // -------------------------------------------------------------- form envelope --

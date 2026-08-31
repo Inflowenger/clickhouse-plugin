@@ -27,6 +27,8 @@ export class Client {
   private readonly ch: ClickHouseClient;
   /** host:port/database — no credentials in it. */
   readonly connInfo: string;
+  /** The connection's default database — "" when none was configured. */
+  readonly database: string;
 
   constructor(cfg: Config) {
     this.ch = createClient({
@@ -46,6 +48,7 @@ export class Client {
       },
     });
     this.connInfo = cfg.connInfo;
+    this.database = cfg.database;
   }
 
   /** Close releases the client. Called when it is evicted from the pool cache. */

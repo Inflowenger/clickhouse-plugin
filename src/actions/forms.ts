@@ -9,6 +9,24 @@
 
 import { formkit } from "@inflowenger/node-plugin-sdk";
 
+// The engines a person reaches for most often, offered as suggestions on the
+// engine fields. They stay plain text inputs, so any engine ClickHouse supports
+// — including a custom or parameterised one (e.g. ReplicatedMergeTree('/path',
+// '{replica}')) — can still be typed in full.
+const tableEngines = [
+  "MergeTree",
+  "ReplacingMergeTree",
+  "SummingMergeTree",
+  "AggregatingMergeTree",
+  "CollapsingMergeTree",
+  "VersionedCollapsingMergeTree",
+  "Log",
+  "TinyLog",
+  "StripeLog",
+  "Memory",
+];
+const databaseEngines = ["Atomic", "Lazy", "Memory", "Replicated"];
+
 const descQuerySQL =
   "SELECT (or any row-returning statement) to run. Pull values straight from the flow with {{$.path}}, e.g. WHERE tenant = '{{$.trigger.tenantId}}'. Bind typed values with ClickHouse named parameters — {id:UInt64} — and supply them in Parameters below.";
 
@@ -119,6 +137,26 @@ export const insertFormDef = formkit
 
 export const insertForm = insertFormDef.build();
 
+export const createDatabaseForm = formkit
+  .form("Create database (if not exists)")
+  .describe("Create a database only if it does not already exist; an existing one is left untouched.")
+  .add(
+    formkit
+      .text("database", "Database")
+      .required()
+      .describe("Identifier of the database to create, e.g. analytics. Accepts a {{$.path}} token."),
+    formkit
+      .text("engine", "Engine (optional)")
+      .set("examples", databaseEngines)
+      .describe(
+        "Database engine. Pick a suggestion or type any engine ClickHouse supports; e.g. Atomic (the default), Memory, Lazy, Replicated. Leave empty for the server default.",
+      ),
+    formkit
+      .text("comment", "Comment (optional)")
+      .describe("A description stored with the database."),
+  )
+  .build();
+
 export const createTableForm = formkit
   .form("Create table (if not exists)")
   .add(
@@ -141,8 +179,9 @@ export const createTableForm = formkit
     formkit
       .text("engine", "Engine")
       .default("MergeTree")
+      .set("examples", tableEngines)
       .describe(
-        "Table engine, used only with bare column definitions (a full statement carries its own). e.g. MergeTree, ReplacingMergeTree, Log, Memory.",
+        "Table engine, used only with bare column definitions (a full statement carries its own). Pick a suggestion or type any engine — including a parameterised one, e.g. ReplacingMergeTree(version). Common: MergeTree, ReplacingMergeTree, Log, Memory.",
       ),
     formkit
       .text("orderBy", "ORDER BY")
