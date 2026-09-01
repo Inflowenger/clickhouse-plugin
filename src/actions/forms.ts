@@ -26,7 +26,17 @@ const tableEngines = [
   "StripeLog",
   "Memory",
 ];
-const databaseEngines = ["Atomic", "Lazy", "Memory", "Replicated"];
+// Database engines are a small, fixed set with no inline parameters, so unlike
+// the table engine (which can be parameterised, e.g. ReplacingMergeTree(version))
+// this is a strict drop-down rather than a free-solo suggestion. The empty value
+// is the leading choice and drops the ENGINE clause, i.e. the server default.
+const databaseEngineChoices = [
+  { value: "", label: "(server default — Atomic)" },
+  { value: "Atomic", label: "Atomic" },
+  { value: "Lazy", label: "Lazy" },
+  { value: "Memory", label: "Memory" },
+  { value: "Replicated", label: "Replicated" },
+];
 
 const descQuerySQL =
   "SELECT (or any row-returning statement) to run. Pull values straight from the flow with {{$.path}}, e.g. WHERE tenant = '{{$.trigger.tenantId}}'. Bind typed values with ClickHouse named parameters — {id:UInt64} — and supply them in Parameters below.";
@@ -147,10 +157,9 @@ export const createDatabaseForm = formkit
       .required()
       .describe("Identifier of the database to create, e.g. analytics. Accepts a {{$.path}} token."),
     formkit
-      .text("engine", "Engine (optional)")
-      .option("suggestion", databaseEngines)
+      .choice("engine", "Engine (optional)", ...databaseEngineChoices)
       .describe(
-        "Database engine. Pick a suggestion or type any engine ClickHouse supports; e.g. Atomic (the default), Memory, Lazy, Replicated. Leave empty for the server default.",
+        "Database engine. Atomic (the server default) is used when left as the default; Lazy, Memory and Replicated are the other supported engines.",
       ),
     formkit
       .text("comment", "Comment (optional)")
